@@ -1,0 +1,54 @@
+{
+  "name": "cortico-world-netlingo",
+  "version": "0.2.0",
+  "type": "module",
+  "description": "让 Coo 可以自己总结、自己上网搜索并保存梗到本地的扩展,建议搭配各大佬的 QQ 接入扩展使用。",
+  "license": "MIT",
+  "author": "danhuangpai",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/danhuangpaii/cortico-world-netlingo.git"
+  },
+  "homepage": "https://github.com/danhuangpaii/cortico-world-netlingo#readme",
+  "bugs": {
+    "url": "https://github.com/danhuangpaii/cortico-world-netlingo/issues"
+  },
+  "keywords": [
+    "cortico-world",
+    "cortico",
+    "slang",
+    "meme"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@11.28.6",
+  "main": "./src/index.ts",
+  "cortico": {
+    "kind": "world",
+    "api": 6,
+    "tags": [
+      "internet",
+      "companion"
+    ],
+    "describe": "describe.json"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "describe.json"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "cortico": "^0.2.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
