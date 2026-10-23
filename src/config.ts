@@ -10,6 +10,17 @@ export interface NetlingoProactiveSection {
   dailyLimit: number;
 }
 
+/** 看图:对梗图调用一个 OpenAI 兼容的 VLM,把描述存进库。 */
+export interface NetlingoVisionSection {
+  enabled: boolean;
+  /** OpenAI 兼容 base URL,例如 https://openrouter.ai/api/v1;请求拼 /chat/completions。 */
+  endpoint: string;
+  /** 密钥的名字,值在部署 .env。 */
+  apiKeySecret: string;
+  /** 视觉模型名,例如 qwen/qwen2.5-vl-72b-instruct。 */
+  model: string;
+}
+
 export interface NetlingoConfigSection {
   enabled: boolean;
   /** 用户开关:关掉后不联网、不收集、不推机会事件。 */
@@ -23,6 +34,7 @@ export interface NetlingoConfigSection {
   /** 抓到的图额外复制一份到这里;填 QQ 表情包目录后 `[表情包:文件名]` 直接可用。 */
   stickerOutDir: string;
   proactive: NetlingoProactiveSection;
+  vision: NetlingoVisionSection;
 }
 
 export const NETLINGO_DEFAULTS: NetlingoConfigSection = {
@@ -33,6 +45,7 @@ export const NETLINGO_DEFAULTS: NetlingoConfigSection = {
   searchApiKeyName: '',
   stickerOutDir: '',
   proactive: { enabled: true, minIdleMinutes: 45, dailyLimit: 3 },
+  vision: { enabled: false, endpoint: '', apiKeySecret: 'NETLINGO_VISION_KEY', model: '' },
 };
 
 export const NETLINGO_CAPABILITY_GROUP: ConfigGroup = {
@@ -86,6 +99,42 @@ export const NETLINGO_SEARCH_GROUP: ConfigGroup = {
         title: '梗图另存目录',
         description: '抓到的图额外复制一份到这里。填 QQ 的表情包目录,就能用 `[表情包:文件名]` 发送。',
         'x-path': { kind: 'directory' },
+        'x-hot': true,
+      },
+    },
+  },
+};
+
+export const NETLINGO_VISION_GROUP: ConfigGroup = {
+  id: 'world:netlingo:vision',
+  owner: 'world:netlingo',
+  schema: {
+    type: 'object',
+    title: '看图',
+    description: '给自己库里的梗图生成一句话描述,发图前知道图里是什么。需要一个 OpenAI 兼容的视觉模型。',
+    properties: {
+      'worlds.netlingo.vision.enabled': {
+        type: 'boolean',
+        title: '开启看图',
+        description: '关掉后 netlingo_describe_meme 直接说明未开启,不调用任何模型。',
+        'x-hot': true,
+      },
+      'worlds.netlingo.vision.endpoint': {
+        type: 'string',
+        title: '视觉端点',
+        description: 'OpenAI 兼容 base URL,例如 https://openrouter.ai/api/v1;请求会拼上 /chat/completions。',
+        'x-hot': true,
+      },
+      'worlds.netlingo.vision.model': {
+        type: 'string',
+        title: '视觉模型',
+        description: '例如 qwen/qwen2.5-vl-72b-instruct。留空则不工作。',
+        'x-hot': true,
+      },
+      'worlds.netlingo.vision.apiKeySecret': {
+        type: 'string',
+        title: '视觉密钥名',
+        description: '只填名字,值写在部署 .env,例如 NETLINGO_VISION_KEY。',
         'x-hot': true,
       },
     },
