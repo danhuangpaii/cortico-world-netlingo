@@ -22,6 +22,8 @@ export interface NetlingoConfigSection {
   searchApiKeyName: string;
   /** 抓到的图额外复制一份到这里;填 QQ 表情包目录后 `[表情包:文件名]` 直接可用。 */
   stickerOutDir: string;
+  /** QQ 的 sticker-index.json 路径;填了才能在没标注时列出候选文件名。 */
+  stickerIndex: string;
   proactive: NetlingoProactiveSection;
 }
 
@@ -32,6 +34,7 @@ export const NETLINGO_DEFAULTS: NetlingoConfigSection = {
   searchEndpoint: '',
   searchApiKeyName: '',
   stickerOutDir: '',
+  stickerIndex: '',
   proactive: { enabled: true, minIdleMinutes: 45, dailyLimit: 3 },
 };
 
@@ -86,6 +89,25 @@ export const NETLINGO_SEARCH_GROUP: ConfigGroup = {
         title: '梗图另存目录',
         description: '抓到的图额外复制一份到这里。填 QQ 的表情包目录,就能用 `[表情包:文件名]` 发送。',
         'x-path': { kind: 'directory' },
+        'x-hot': true,
+      },
+    },
+  },
+};
+
+export const NETLINGO_STICKER_GROUP: ConfigGroup = {
+  id: 'world:netlingo:sticker',
+  owner: 'world:netlingo',
+  schema: {
+    type: 'object',
+    title: '表情时机',
+    description: '给表情包记下「什么场合适合发」,让 bot 在合适的时候挑得到图。',
+    properties: {
+      'worlds.netlingo.stickerIndex': {
+        type: 'string',
+        title: '表情索引文件',
+        description: '填 QQ 扩展的 sticker-index.json 绝对路径;没标注时靠它列出候选文件名。留空则只按已标注的查。',
+        'x-path': { kind: 'file', extensions: ['json'] },
         'x-hot': true,
       },
     },

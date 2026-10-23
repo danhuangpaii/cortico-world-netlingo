@@ -1,6 +1,6 @@
 /** 网络用语与梗:联网查、本地记、在静默满一段时间后提醒 bot 可以用。 */
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Language } from 'cortico/core/language.ts';
@@ -20,6 +20,7 @@ import {
   NETLINGO_CAPABILITY_GROUP,
   NETLINGO_PROACTIVE_GROUP,
   NETLINGO_SEARCH_GROUP,
+  NETLINGO_STICKER_GROUP,
   type NetlingoConfigSection,
 } from './config.ts';
 import {
@@ -31,8 +32,10 @@ import {
   type ExchangeEntry,
   type LibraryFile,
   type MemeEntry,
+  type StickerTag,
   type TermEntry,
 } from './library.ts';
+import { matchStickers, readStickerIndex } from './sticker.ts';
 import { Quota, localDay } from './quota.ts';
 import { pairLines, parseForwardLines } from './chat.ts';
 import {
@@ -235,6 +238,38 @@ export const NETLINGO_TOOL_DECLS: ReadonlyArray<Omit<ToolDef, 'handler'>> = [
     },
   },
   {
+    name: 'netlingo_label_sticker',
+    description:
+      '给一张表情包记下用途:什么气氛、什么场合适合发它。记过之后 netlingo_sticker_for 才能按气氛查到这张图。',
+    tags: ['write'],
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        file: { type: 'string', description: '表情包文件名,如 sticker-xxxx.gif。' },
+        mood: { type: 'string', description: '气氛关键词,如「尴尬」「庆祝」「安慰」。' },
+        when: { type: 'string', description: '可选,一句话说明什么时候用。' },
+        note: { type: 'string', description: '可选,备注。' },
+      },
+      required: ['file', 'mood'],
+    },
+  },
+  {
+    name: 'netlingo_sticker_for',
+    description:
+      '按当前气氛找一张该发的表情包:返回已标注匹配的 [表情包:文件名] 与用法;没有匹配时说明还没标,并列出候选文件名。',
+    tags: ['read'],
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        mood: { type: 'string', description: '现在是什么气氛,如「尴尬」「对方在自嘲」「庆祝」。' },
+        limit: { type: 'integer', description: '最多给几张,1 到 10,默认 3。' },
+      },
+      required: ['mood'],
+    },
+  },
+  {
     name: 'netlingo_pick',
     description: '取一条素材用于主动说话:随机返回一个词条或一张梗图,梗图会给可直接发送的文件名标记。',
     tags: ['read'],
@@ -332,6 +367,8 @@ export class NetlingoWorld implements World {
       this.exchangesTool(),
       this.matchTool(),
       this.importChatTool(),
+      this.labelStickerTool(),
+      this.stickerForTool(),
       this.pickTool(),
       this.statusTool(),
       this.switchTool(),
@@ -342,7 +379,7 @@ export class NetlingoWorld implements World {
     return {
       label: '网络语言',
       lamps: [this.lamp(language)],
-      config: [NETLINGO_CAPABILITY_GROUP, NETLINGO_SEARCH_GROUP, NETLINGO_PROACTIVE_GROUP],
+      config: [NETLINGO_CAPABILITY_GROUP, NETLINGO_SEARCH_GROUP, NETLINGO_STICKER_GROUP, NETLINGO_PROACTIVE_GROUP],
       storage: this.storageParts(),
       promptDocs: [
         {
@@ -855,6 +892,71 @@ export class NetlingoWorld implements World {
     };
   }
 
+  private labelStickerTool(): ToolDef {
+    return {
+      ...decl('netlingo_label_sticker'),
+      handler: async (args) => {
+        const file = textArg(args.file);
+        const mood = textArg(args.mood);
+        if (!file || !mood) return failure('file 与 mood 都不能为空。');
+        const lib = this.library.load();
+        const entry: StickerTag = {
+          file: file.slice(0, 200),
+          mood: mood.slice(0, 40),
+          when: textArg(args.when) || undefined,
+          note: textArg(args.note) || undefined,
+          savedAt: nowIso(this.timezone),
+        };
+        const { replaced } = this.library.addStickerTag(lib, entry);
+        this.library.save(lib);
+        return `${replaced ? '已更新' : '已记下'}「${entry.file}」适合「${entry.mood}」,现有 ${lib.stickers.length} 条表情标签。`;
+      },
+    };
+  }
+
+  private stickerForTool(): ToolDef {
+    return {
+      ...decl('netlingo_sticker_for'),
+      handler: async (args) => {
+        const mood = textArg(args.mood);
+        if (!mood) return failure('mood 不能为空:说清现在什么气氛,比如「尴尬」「庆祝」。');
+        const limit = clampInt(args.limit, 1, 10, 3);
+        const lib = this.library.load();
+        const matches = matchStickers(lib.stickers, mood, limit);
+        if (matches.length) {
+          const lines = matches.map(
+            (item) =>
+              `- [表情包:${item.entry.file}] 适合「${item.entry.mood}」${item.entry.when ? `:${item.entry.when}` : ''}`,
+          );
+          return (
+            `按「${mood}」找到 ${matches.length} 张:\n${lines.join('\n')}\n` +
+            '一条消息最多一个表情;文字已经说清的事,别再配一张图解释。'
+          );
+        }
+        const candidates = this.stickerCandidates();
+        const head = `库里还没有标过「${mood}」的表情。`;
+        if (!candidates.length) {
+          return `${head}配置里填了「表情索引文件」之后才能列出候选;也可以先拿一张手上的图用 netlingo_label_sticker 记下来。`;
+        }
+        return (
+          `${head}现有 ${candidates.length} 张可标,比如:${candidates.slice(0, 6).join('、')}\n` +
+          '挑一张合适的,用 netlingo_label_sticker 记下它适合这个场合,下次就能直接查到。'
+        );
+      },
+    };
+  }
+
+  private stickerCandidates(): string[] {
+    const path = this.cfg.stickerIndex.trim();
+    if (!path) return [];
+    try {
+      if (!existsSync(path)) return [];
+      return readStickerIndex(JSON.parse(readFileSync(path, 'utf8')));
+    } catch {
+      return [];
+    }
+  }
+
   private pickTool(): ToolDef {
     return {
       ...decl('netlingo_pick'),
@@ -1083,7 +1185,7 @@ export class NetlingoWorld implements World {
       `网络语言能力:${this.cfg.netLanguageEnabled ? '开' : '关'};` +
       `今日联网 ${this.quota.searches}/${this.limitText(this.cfg.dailySearchLimit)};` +
       `今日提醒 ${this.quota.opportunities}/${this.limitText(this.cfg.proactive.dailyLimit)};` +
-      `词条 ${lib.terms.length} 条,梗图 ${lib.memes.length} 张,对话对 ${lib.exchanges.length} 组。`;
+      `词条 ${lib.terms.length} 条,梗图 ${lib.memes.length} 张,对话对 ${lib.exchanges.length} 组,表情标签 ${lib.stickers.length} 条。`;
     if (!detailed) return head;
     const recentTerms = lib.terms.slice(-3).map((t) => t.term);
     const recentMemes = lib.memes.slice(-3).map((m) => m.file);

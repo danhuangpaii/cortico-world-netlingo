@@ -47,6 +47,10 @@ B 站找播放最高的相关视频,返回「楼 + 楼中楼回复」,再附一�
 从事件库读它,按不同人的相邻发言配成对话对存进长期库;默认读最近 3 条,可只读不存(`save: false`)。
 只读事件库,不联网、不扣额度。
 
+**什么时候发什么表情。** `netlingo_label_sticker` 给一张表情包记下「适合什么气氛」,`netlingo_sticker_for`
+按当前气氛查回来,给出可以直接发的 `[表情包:文件名]`。同义词会归一:尴尬/无语/冷场算一组。没标注过时,
+如果配置里填了 QQ 的 `sticker-index.json`,会列出候选文件名让你先挑一张来标。
+
 WebUI 的 World 页 → 网络语言 → 数据页签里能看到库的位置与实时规模:「词条与梗图」一项(词条几条、
 梗图几张,清除时连图片文件一起删)、「对话对」一项(几组)。两边分开清,清对话对不动词条,反过来也一样。
 
@@ -69,6 +73,7 @@ Coopanion 的 QQ World 自己也有一套主动说话调度(`qq_proactive`)。�
 | `worlds.netlingo.searchEndpoint` | 空 | 留空用内置搜索(360→搜狗→Bing RSS→DuckDuckGo 依次尝试);填了按 `q` 请求,JSON/HTML 都认 |
 | `worlds.netlingo.searchApiKeyName` | 空 | 端点密钥的名字;值放部署 `.env`,经 `ctx.secret()` 读 |
 | `worlds.netlingo.stickerOutDir` | 空 | 梗图另存目录,填 QQ 表情包目录后可直接发送 |
+| `worlds.netlingo.stickerIndex` | 空 | QQ 的 `sticker-index.json` 绝对路径;填了才能在没标注时列出候选文件名 |
 | `worlds.netlingo.proactive.enabled` | `true` | 是否推主动机会事件 |
 | `worlds.netlingo.proactive.minIdleMinutes` | `45` | 静默多少分钟后提醒 |
 | `worlds.netlingo.proactive.dailyLimit` | `3` | 每日提醒上限,0 不限 |
@@ -87,6 +92,8 @@ Coopanion 的 QQ World 自己也有一套主动说话调度(`qq_proactive`)。�
 | `netlingo_exchanges` | 翻长期库里的对话对 |
 | `netlingo_match` | 拿群聊原话查库,给下一句或可再用的词条 |
 | `netlingo_import_chat` | 从事件库读聊天记录,配对入库 |
+| `netlingo_label_sticker` | 给表情包记下适合的气氛与场合 |
+| `netlingo_sticker_for` | 按当前气氛找一张该发的表情 |
 | `netlingo_pick` | 随机取一条素材 |
 | `netlingo_status` | 开关、用量、库存 |
 | `netlingo_switch` | 开关能力,立即生效 |
@@ -108,6 +115,7 @@ Coopanion 的 QQ World 自己也有一套主动说话调度(`qq_proactive`)。�
 | `src/quota.ts` | 每日次数与本地日期滚日 |
 | `src/search.ts` | 搜索与抓图;解析函数单独导出,测试不联网 |
 | `src/chat.ts` | 解析 `qq.forward` 聊天记录并配成对话 |
+| `src/sticker.ts` | 表情的场合归一与匹配 |
 | `src/ENV_PROMPT.md` | 环境提示词模板 |
 | `tests/` | 干装载、工具回执、配额、时机、解析函数 |
 

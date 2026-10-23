@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ToolCallContext } from 'cortico/core/types.ts';
@@ -459,6 +459,48 @@ describe('Netlingo World', () => {
     const out = String(await tool(f.world, 'netlingo_import_chat').handler({}, CALL));
     expect(out).toContain('没有');
     await f.world.stop();
+  });
+
+  it('给表情打标签后能按气氛查到', async () => {
+    const f = makeWorld();
+    const labeled = String(
+      await tool(f.world, 'netlingo_label_sticker').handler(
+        { file: 'sticker-a.gif', mood: '尴尬', when: '别人说了句冷笑话' },
+        CALL,
+      ),
+    );
+    expect(labeled).toContain('已记下');
+
+    const out = String(await tool(f.world, 'netlingo_sticker_for').handler({ mood: '尴尬' }, CALL));
+    expect(out).toContain('[表情包:sticker-a.gif]');
+    expect(out).toContain('冷笑话');
+  });
+
+  it('同义词算一组:标「无语」能按「尴尬」查到', async () => {
+    const f = makeWorld();
+    await tool(f.world, 'netlingo_label_sticker').handler({ file: 'sticker-b.png', mood: '无语' }, CALL);
+    const out = String(await tool(f.world, 'netlingo_sticker_for').handler({ mood: '尴尬' }, CALL));
+    expect(out).toContain('sticker-b.png');
+  });
+
+  it('没有标签也没有索引时说清怎么开始', async () => {
+    const f = makeWorld();
+    const out = String(await tool(f.world, 'netlingo_sticker_for').handler({ mood: '庆祝' }, CALL));
+    expect(out).toContain('还没有标过');
+    expect(out).toContain('表情索引文件');
+  });
+
+  it('配了表情索引时列出候选文件名', async () => {
+    const indexPath = join(scratchDir, 'sticker-index.json');
+    writeFileSync(
+      indexPath,
+      JSON.stringify({ a: { file: 'sticker-c.gif' }, b: { file: 'sticker-d.png' } }),
+      'utf8',
+    );
+    const f = makeWorld({ stickerIndex: indexPath });
+    const out = String(await tool(f.world, 'netlingo_sticker_for').handler({ mood: '庆祝' }, CALL));
+    expect(out).toContain('sticker-c.gif');
+    expect(out).toContain('现有 2 张');
   });
 
   it('状态回执写清开关、用量与库存', async () => {

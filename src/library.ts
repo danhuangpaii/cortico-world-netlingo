@@ -34,16 +34,29 @@ export interface ExchangeEntry {
   savedAt: string;
 }
 
+/** 给一张表情包记的用法:什么场合、什么情绪时发它。 */
+export interface StickerTag {
+  /** 表情包文件名,如 sticker-xxxx.gif。 */
+  file: string;
+  /** 情绪或场合关键词,如「尴尬」「庆祝」。 */
+  mood: string;
+  /** 一句话说明什么时候用。 */
+  when?: string;
+  note?: string;
+  savedAt: string;
+}
+
 export interface LibraryFile {
   terms: TermEntry[];
   memes: MemeEntry[];
   exchanges: ExchangeEntry[];
+  stickers: StickerTag[];
 }
 
 export const LIBRARY_FILE = 'netlingo-library.json';
 export const MEME_DIR = 'netlingo-memes';
 
-const EMPTY: LibraryFile = { terms: [], memes: [], exchanges: [] };
+const EMPTY: LibraryFile = { terms: [], memes: [], exchanges: [], stickers: [] };
 
 export class Library {
   constructor(private readonly dataDir: string) {}
@@ -58,7 +71,7 @@ export class Library {
 
   load(): LibraryFile {
     const file = this.path();
-    if (!existsSync(file)) return { terms: [], memes: [], exchanges: [] };
+    if (!existsSync(file)) return { terms: [], memes: [], exchanges: [], stickers: [] };
     try {
       const raw = JSON.parse(readFileSync(file, 'utf8')) as Partial<LibraryFile>;
       return {
@@ -66,9 +79,10 @@ export class Library {
         memes: Array.isArray(raw.memes) ? raw.memes.filter(isMeme) : [],
         // 旧文件没有这一段,补空数组。
         exchanges: Array.isArray(raw.exchanges) ? raw.exchanges.filter(isExchange) : [],
+        stickers: Array.isArray(raw.stickers) ? raw.stickers.filter(isStickerTag) : [],
       };
     } catch {
-      return { terms: [], memes: [], exchanges: [] };
+      return { terms: [], memes: [], exchanges: [], stickers: [] };
     }
   }
 
@@ -109,6 +123,21 @@ export class Library {
     return { replaced: false };
   }
 
+  /** 同一张图 + 同一个情绪只留一条;后写的覆盖。 */
+  addStickerTag(lib: LibraryFile, entry: StickerTag): { replaced: boolean } {
+    const key = `${entry.file.trim().toLowerCase()}\u0000${entry.mood.trim().toLowerCase()}`;
+    const at = lib.stickers.findIndex(
+      (item) =>
+        `${item.file.trim().toLowerCase()}\u0000${item.mood.trim().toLowerCase()}` === key,
+    );
+    if (at >= 0) {
+      lib.stickers[at] = entry;
+      return { replaced: true };
+    }
+    lib.stickers.push(entry);
+    return { replaced: false };
+  }
+
   ensureMemeDir(): string {
     const dir = this.memeDir();
     mkdirSync(dir, { recursive: true });
@@ -117,7 +146,12 @@ export class Library {
 }
 
 export function emptyLibrary(): LibraryFile {
-  return { terms: [...EMPTY.terms], memes: [...EMPTY.memes], exchanges: [...EMPTY.exchanges] };
+  return {
+    terms: [...EMPTY.terms],
+    memes: [...EMPTY.memes],
+    exchanges: [...EMPTY.exchanges],
+    stickers: [...EMPTY.stickers],
+  };
 }
 
 function isTerm(v: unknown): v is TermEntry {
@@ -133,6 +167,11 @@ function isMeme(v: unknown): v is MemeEntry {
 function isExchange(v: unknown): v is ExchangeEntry {
   const e = v as Partial<ExchangeEntry> | null;
   return !!e && typeof e.a === 'string' && typeof e.b === 'string' && typeof e.savedAt === 'string';
+}
+
+function isStickerTag(v: unknown): v is StickerTag {
+  const s = v as Partial<StickerTag> | null;
+  return !!s && typeof s.file === 'string' && typeof s.mood === 'string' && typeof s.savedAt === 'string';
 }
 
 function exchangeKey(entry: ExchangeEntry): string {

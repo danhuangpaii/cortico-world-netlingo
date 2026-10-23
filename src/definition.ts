@@ -29,6 +29,8 @@ export const NETLINGO: WorldDefinition<NetlingoConfigSection> = {
       netlingo_exchanges: { zh: '翻长期库里的对话对。', en: 'Looks up saved exchanges.' },
       netlingo_match: { zh: '拿群聊原话查库:命中对话对给下一句,命中词条说明可以再用。', en: 'Matches a chat line against the library and offers the next line or the stored term.' },
       netlingo_import_chat: { zh: '从事件库读群里的聊天记录,把一来一回存进长期库。', en: 'Reads shared chat records from the event store and keeps the exchanges.' },
+      netlingo_label_sticker: { zh: '给表情包记下适合什么气氛与场合。', en: 'Records which mood or occasion a sticker suits.' },
+      netlingo_sticker_for: { zh: '按当前气氛找一张该发的表情包。', en: 'Finds a sticker that fits the current mood.' },
       netlingo_pick: { zh: '随机取一条词条、梗图或对话对用于主动说话。', en: 'Picks one term, meme or exchange to use when speaking up.' },
       netlingo_status: { zh: '报告开关、今日用量与库存。', en: 'Reports the switch, today usage and library size.' },
       netlingo_switch: { zh: '开关网络语言能力并立即生效。', en: 'Turns the slang ability on or off, taking effect immediately.' },
