@@ -29,18 +29,13 @@ interface WorldFixture {
   fetchCalls: Array<{ url: string; status?: number }>;
 }
 
-function makeWorld(
-  overrides: Partial<NetlingoConfigSection> = {},
-  fetchImpl?: typeof fetch,
-  secretValue = '',
-): WorldFixture {
+function makeWorld(overrides: Partial<NetlingoConfigSection> = {}, fetchImpl?: typeof fetch): WorldFixture {
   const cfg: NetlingoConfigSection = {
     ...NETLINGO_DEFAULTS,
     // 测试里不走内置搜索源,固定一个自建端点,保证一次搜索只发一个请求。
     searchEndpoint: 'https://search.test/',
     ...overrides,
     proactive: { ...NETLINGO_DEFAULTS.proactive, ...(overrides.proactive ?? {}) },
-    vision: { ...NETLINGO_DEFAULTS.vision, ...(overrides.vision ?? {}) },
   };
   const dataDir = join(scratchDir, 'data');
   const calls: Array<{ url: string; status?: number }> = [];
@@ -57,7 +52,7 @@ function makeWorld(
     timezone: 'Asia/Shanghai',
     dataDir,
     botName: 'Coo',
-    secret: () => secretValue,
+    secret: () => '',
     persist: (patch) => {
       Object.assign(cfg, patch);
     },
@@ -431,45 +426,39 @@ describe('Netlingo World', () => {
     expect(out).toContain('没有和');
   });
 
-  it('看图没开启时说明怎么配', async () => {
+  it('从事件库读聊天记录并配对入库', async () => {
     const f = makeWorld();
-    const out = (await tool(f.world, 'netlingo_describe_meme').handler({}, CALL)) as { text: string };
-    expect(out.text).toContain('看图没开启');
+    f.host.store = {
+      ...f.host.store,
+      range: () => [
+        {
+          cursor: 1,
+          type: 'qq.forward',
+          ts: '2026-10-23T05:00:00+08:00',
+          source: 'qqbot',
+          origin: 'external' as const,
+          text: '[系统] #1 引用的转发消息展开如下：\n甲(1): 你只是怕了\n乙(2): 这谁不怕\n甲(1): 试试就试试',
+        },
+      ],
+    } as unknown as typeof f.host.store;
+    await f.world.start(f.host);
+
+    const out = String(await tool(f.world, 'netlingo_import_chat').handler({}, CALL));
+    expect(out).toContain('存进 2 组');
+    expect(out).toContain('这谁不怕');
+
+    const list = String(await tool(f.world, 'netlingo_exchanges').handler({}, CALL));
+    expect(list).toContain('你只是怕了');
+    expect(list).toContain('这谁不怕');
+    await f.world.stop();
   });
 
-  it('配置视觉后给梗图生成描述,pick 能带出来', async () => {
-    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
-    const fetchImpl: typeof fetch = async (input) => {
-      const url = typeof input === 'string' ? input : String(input);
-      if (url.includes('/chat/completions')) {
-        return new Response(
-          JSON.stringify({ choices: [{ message: { content: '一只猫眯着眼,配文无语' } }] }),
-          { status: 200, headers: { 'content-type': 'application/json' } },
-        );
-      }
-      return new Response(png, { status: 200, headers: { 'content-type': 'image/png' } });
-    };
-    const f = makeWorld(
-      { vision: { enabled: true, endpoint: 'https://vlm.test/v1', apiKeySecret: 'K', model: 'vlm' } },
-      fetchImpl,
-      'sk-test',
-    );
-    await tool(f.world, 'netlingo_collect_meme').handler({ urls: ['https://example.com/a.png'] }, CALL);
-    const out = String(await tool(f.world, 'netlingo_describe_meme').handler({}, CALL));
-    expect(out).toContain('已描述 1 张');
-    expect(out).toContain('无语');
-    expect(out).toContain('还有 0 张没描述');
-
-    const picked = String(await tool(f.world, 'netlingo_pick').handler({}, CALL));
-    expect(picked).toContain('无语');
-  });
-
-  it('视觉密钥为空时直说缺什么', async () => {
-    const f = makeWorld({
-      vision: { enabled: true, endpoint: 'https://vlm.test/v1', apiKeySecret: 'K', model: 'vlm' },
-    });
-    const out = (await tool(f.world, 'netlingo_describe_meme').handler({}, CALL)) as { text: string };
-    expect(out.text).toContain('视觉密钥是空的');
+  it('事件库里没有聊天记录时说清怎么试', async () => {
+    const f = makeWorld();
+    await f.world.start(f.host);
+    const out = String(await tool(f.world, 'netlingo_import_chat').handler({}, CALL));
+    expect(out).toContain('没有');
+    await f.world.stop();
   });
 
   it('状态回执写清开关、用量与库存', async () => {

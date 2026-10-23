@@ -1,10 +1,11 @@
 /** 网络用语与梗:联网查、本地记、在静默满一段时间后提醒 bot 可以用。 */
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Language } from 'cortico/core/language.ts';
 import type {
+  EventEnvelope,
   StoragePart,
   ToolDef,
   ToolOutcome,
@@ -19,7 +20,6 @@ import {
   NETLINGO_CAPABILITY_GROUP,
   NETLINGO_PROACTIVE_GROUP,
   NETLINGO_SEARCH_GROUP,
-  NETLINGO_VISION_GROUP,
   type NetlingoConfigSection,
 } from './config.ts';
 import {
@@ -34,7 +34,7 @@ import {
   type TermEntry,
 } from './library.ts';
 import { Quota, localDay } from './quota.ts';
-import { describeImage, type VisionSettings } from './vision.ts';
+import { pairLines, parseForwardLines } from './chat.ts';
 import {
   describeError,
   downloadImage,
@@ -218,16 +218,18 @@ export const NETLINGO_TOOL_DECLS: ReadonlyArray<Omit<ToolDef, 'handler'>> = [
     },
   },
   {
-    name: 'netlingo_describe_meme',
+    name: 'netlingo_import_chat',
     description:
-      '看自己库里的梗图:调用配置好的视觉模型,给每张图生成一句话描述并存进库。以后发图或挑素材时能知道图里是什么。不走每日搜索额度。',
+      '读群里最近分享的聊天记录(合并转发已由 QQ World 展开进事件库),把不同人的一来一回存进长期库。只读事件库,不联网、不扣额度;给的是原话,不要照抄。',
     tags: ['read'],
     parameters: {
       type: 'object',
       additionalProperties: false,
       properties: {
-        file: { type: 'string', description: '可选,只描述这一张(文件名)。不给就挑还没描述过的。' },
-        limit: { type: 'integer', description: '最多描述几张,1 到 10,默认 3。' },
+        limit: { type: 'integer', description: '最多读几条聊天记录,1 到 10,默认 3。' },
+        lines: { type: 'integer', description: '每条最多取几行,2 到 60,默认 30。' },
+        source: { type: 'string', description: '产生这些事件的 World id,默认 qqbot。' },
+        save: { type: 'boolean', description: '默认 true;false 表示只看不存。' },
       },
       required: [],
     },
@@ -329,7 +331,7 @@ export class NetlingoWorld implements World {
       this.captureTool(),
       this.exchangesTool(),
       this.matchTool(),
-      this.describeMemeTool(),
+      this.importChatTool(),
       this.pickTool(),
       this.statusTool(),
       this.switchTool(),
@@ -340,7 +342,7 @@ export class NetlingoWorld implements World {
     return {
       label: '网络语言',
       lamps: [this.lamp(language)],
-      config: [NETLINGO_CAPABILITY_GROUP, NETLINGO_SEARCH_GROUP, NETLINGO_VISION_GROUP, NETLINGO_PROACTIVE_GROUP],
+      config: [NETLINGO_CAPABILITY_GROUP, NETLINGO_SEARCH_GROUP, NETLINGO_PROACTIVE_GROUP],
       storage: this.storageParts(),
       promptDocs: [
         {
@@ -794,60 +796,61 @@ export class NetlingoWorld implements World {
     };
   }
 
-  private describeMemeTool(): ToolDef {
+  private importChatTool(): ToolDef {
     return {
-      ...decl('netlingo_describe_meme'),
+      ...decl('netlingo_import_chat'),
       handler: async (args) => {
-        const off = this.offMessage();
-        if (off) return off;
-        const settings = this.visionSettings();
-        if (!settings.enabled) return failure('看图没开启:在设置里打开「看图」,填端点、模型与密钥名。');
-        if (!settings.endpoint.trim()) return failure('视觉端点没填(worlds.netlingo.vision.endpoint)。');
-        if (!settings.model.trim()) return failure('视觉模型没填(worlds.netlingo.vision.model)。');
-        if (!settings.apiKey) {
-          return failure(
-            `视觉密钥是空的:检查部署 .env 里有没有 ${this.cfg.vision.apiKeySecret || 'NETLINGO_VISION_KEY'}。`,
-          );
+        const host = this.host;
+        if (!host?.store) return failure('事件库不可用:World 还没挂载。');
+        const limit = clampInt(args.limit, 1, 10, 3);
+        const maxLines = clampInt(args.lines, 2, 60, 30);
+        const source = textArg(args.source) || 'qqbot';
+        const save = args.save !== false;
+
+        let events: EventEnvelope[] = [];
+        try {
+          events = host.store.range({ source, limit: 400 });
+        } catch (err) {
+          return failure(`读事件库失败:${describeError(err)}`);
+        }
+        const forwards = events.filter((event) => event.type === 'qq.forward').slice(-limit);
+        if (!forwards.length) {
+          return `事件库里没有 ${source} 的聊天记录(qq.forward)。让群友发一次合并转发再试;如果那个 World 不叫 ${source},用 source 参数改。`;
         }
 
         const lib = this.library.load();
-        const fileArg = textArg(args.file);
-        const limit = clampInt(args.limit, 1, 10, 3);
-        const candidates = fileArg
-          ? lib.memes.filter((item) => item.file === fileArg)
-          : lib.memes.filter((item) => !item.description);
-        if (!candidates.length) {
-          return fileArg
-            ? `库里没有这张图:${fileArg}。现有 ${lib.memes.length} 张。`
-            : `库里 ${lib.memes.length} 张梗图都已经有描述了。`;
-        }
-
-        const done: string[] = [];
-        const failed: string[] = [];
-        for (const meme of candidates.slice(0, limit)) {
-          const path = join(this.library.memeDir(), meme.file);
-          if (!existsSync(path)) {
-            failed.push(`${meme.file}(文件不在)`);
-            continue;
-          }
-          const result = await describeImage(readFileSync(path), meme.mime, settings, this.fetchImpl);
-          if (result.ok && result.text) {
-            meme.description = result.text;
-            done.push(`${meme.file}:${result.text}`);
-          } else {
-            failed.push(`${meme.file}(${result.error ?? '未知错误'})`);
+        const samples: string[] = [];
+        let linesTotal = 0;
+        let pairsAdded = 0;
+        for (const event of forwards) {
+          const lines = parseForwardLines(event.text ?? '', maxLines);
+          linesTotal += lines.length;
+          for (const pair of pairLines(lines)) {
+            if (samples.length < 6) {
+              samples.push(`甲(${pair.a.name}):${pair.a.body}\n乙(${pair.b.name}):${pair.b.body}`);
+            }
+            if (save) {
+              this.library.addExchange(lib, {
+                a: pair.a.body,
+                b: pair.b.body,
+                where: 'qq群·聊天记录',
+                topic: '转发',
+                savedAt: nowIso(this.timezone),
+              });
+              pairsAdded += 1;
+            }
           }
         }
-        if (done.length) this.library.save(lib);
+        if (save) this.library.save(lib);
 
-        const still = lib.memes.filter((item) => !item.description).length;
+        const savedText = save
+          ? `存进 ${pairsAdded} 组对话对,长期库现有 ${lib.exchanges.length} 组。`
+          : '只看了,没存。';
         return [
-          done.length ? `已描述 ${done.length} 张:\n${done.map((item) => `- ${item}`).join('\n')}` : '这次一张也没描述成。',
-          failed.length ? `失败 ${failed.length} 张:${failed.join(';')}` : '',
-          `库里共 ${lib.memes.length} 张,还有 ${still} 张没描述。`,
-        ]
-          .filter(Boolean)
-          .join('\n');
+          `读到 ${forwards.length} 条聊天记录、${linesTotal} 行,${savedText}`,
+          samples.length ? `样本:\n${samples.join('\n---\n')}` : '没有可配对的对话。',
+          '这些是原话:学接法,不照抄;涉及隐私的内容不要往外说。',
+        ].join('\n\n');
       },
     };
   }
@@ -1008,9 +1011,8 @@ export class NetlingoWorld implements World {
     }
     const meme = lib.memes[randInt(lib.memes.length)];
     const canSend = !!this.cfg.stickerOutDir.trim();
-    const note = meme.description ?? meme.caption;
     return {
-      text: `【梗图】${meme.file}${note ? `(${note})` : ''}\n来源:${meme.sourceUrl ?? '本地'}`,
+      text: `【梗图】${meme.file}${meme.caption ? `(${meme.caption})` : ''}\n来源:${meme.sourceUrl ?? '本地'}`,
       canSend,
     };
   }
@@ -1058,24 +1060,6 @@ export class NetlingoWorld implements World {
     } catch {
       // 目标目录不可写时不打断收集,回执里的「可以直接发」可能因此不成立。
     }
-  }
-
-  private visionSettings(): VisionSettings {
-    const name = this.cfg.vision.apiKeySecret.trim();
-    let apiKey = '';
-    if (name) {
-      try {
-        apiKey = this.secret(name) ?? '';
-      } catch {
-        apiKey = '';
-      }
-    }
-    return {
-      enabled: this.cfg.vision.enabled,
-      endpoint: this.cfg.vision.endpoint,
-      apiKey,
-      model: this.cfg.vision.model,
-    };
   }
 
   private apiKey(): string {

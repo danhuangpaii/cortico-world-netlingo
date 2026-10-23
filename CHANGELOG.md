@@ -1,9 +1,7 @@
-## 0.3.0
+## 0.3.1
 
-- 新增 `netlingo_describe_meme`:调一个 OpenAI 兼容的视觉模型,给库里还没描述的梗图生成一句话描述并存进库;`netlingo_pick` 会带出来,发图前知道图里是什么。
-- 新增「看图」配置组:`vision.enabled` / `endpoint` / `model` / `apiKeySecret`(密钥名,值在部署 .env)。
-- 看图不占每日联网查找额度;关闭或没配时工具回执直说缺什么。
-- 建议同时关掉 QQ World 的「图片作为模型附件」,避免把图发给不支持视觉的主模型。
+- 新增 `netlingo_import_chat`:从事件库读群里最近分享的聊天记录(QQ World 展开的 `qq.forward`),把不同人的相邻发言配成对话对存进长期库;只读事件库,不联网、不扣额度。
+- 不做 GIF/图片识别:那属于 QQ World 的 vision,本包只处理文字形式的聊天记录。
 
 ## 0.2.1
 

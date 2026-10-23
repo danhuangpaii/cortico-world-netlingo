@@ -18,8 +18,6 @@ export interface MemeEntry {
   mime: string;
   sourceUrl?: string;
   caption?: string;
-  /** VLM 生成的一句话描述;没描述过时缺省。 */
-  description?: string;
   addedAt: string;
 }
 

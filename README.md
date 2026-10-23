@@ -42,9 +42,9 @@ B 站找播放最高的相关视频,返回「楼 + 楼中楼回复」,再附一�
 **接住群里的话。** `netlingo_match` 拿群聊原话查库:命中对话对就给出可以接的下一句,命中词条就说明
 群友用的词你记过、可以顺着再用。本地查询,不联网、不扣额度。
 
-**看懂自己的梗图。** `netlingo_describe_meme` 调一个 OpenAI 兼容的视觉模型,给库里还没描述的梗图
-生成一句话描述并存进库;之后 `netlingo_pick` 会带出「文件名(描述)」,发图前就知道图里是什么。
-看图走另一个模型,不占每日联网查找额度。
+**读群里的聊天记录。** 群友发「合并转发」时,QQ World 会展开成 `qq.forward` 事件。`netlingo_import_chat`
+从事件库读它,按不同人的相邻发言配成对话对存进长期库;默认读最近 3 条,可只读不存(`save: false`)。
+只读事件库,不联网、不扣额度。
 
 WebUI 的 World 页 → 网络语言 → 数据页签里能看到库的位置与实时规模:「词条与梗图」一项(词条几条、
 梗图几张,清除时连图片文件一起删)、「对话对」一项(几组)。两边分开清,清对话对不动词条,反过来也一样。
@@ -71,10 +71,6 @@ Coopanion 的 QQ World 自己也有一套主动说话调度(`qq_proactive`)。�
 | `worlds.netlingo.proactive.enabled` | `true` | 是否推主动机会事件 |
 | `worlds.netlingo.proactive.minIdleMinutes` | `45` | 静默多少分钟后提醒 |
 | `worlds.netlingo.proactive.dailyLimit` | `3` | 每日提醒上限,0 不限 |
-| `worlds.netlingo.vision.enabled` | `false` | 是否允许看图 |
-| `worlds.netlingo.vision.endpoint` | 空 | OpenAI 兼容 base URL,如 `https://openrouter.ai/api/v1` |
-| `worlds.netlingo.vision.model` | 空 | 视觉模型名,如 `qwen/qwen2.5-vl-72b-instruct` |
-| `worlds.netlingo.vision.apiKeySecret` | `NETLINGO_VISION_KEY` | 密钥名,值放部署 `.env` |
 
 ## 工具与事件
 
@@ -89,7 +85,7 @@ Coopanion 的 QQ World 自己也有一套主动说话调度(`qq_proactive`)。�
 | `netlingo_capture` | 记一组对话对 |
 | `netlingo_exchanges` | 翻长期库里的对话对 |
 | `netlingo_match` | 拿群聊原话查库,给下一句或可再用的词条 |
-| `netlingo_describe_meme` | 调视觉模型给梗图生成描述 |
+| `netlingo_import_chat` | 从事件库读聊天记录,配对入库 |
 | `netlingo_pick` | 随机取一条素材 |
 | `netlingo_status` | 开关、用量、库存 |
 | `netlingo_switch` | 开关能力,立即生效 |
@@ -105,13 +101,12 @@ Coopanion 的 QQ World 自己也有一套主动说话调度(`qq_proactive`)。�
 | 文件 | 内容 |
 |---|---|
 | `src/definition.ts` | `WorldDefinition`:id、label、默认配置段、`create()`、`describe` |
-| `src/config.ts` | 配置段类型、默认值、四个 WebUI 配置组 |
+| `src/config.ts` | 配置段类型、默认值、三个 WebUI 配置组 |
 | `src/world.ts` | `World` 实现:工具、事件、静默计时、配额联动 |
-| `src/library.ts` | 词条、梗图与对话对的本地库 |
+| `src/library.ts` | 词条与梗图的本地库 |
 | `src/quota.ts` | 每日次数与本地日期滚日 |
 | `src/search.ts` | 搜索与抓图;解析函数单独导出,测试不联网 |
-| `src/trending.ts` | 热榜、B 站视频与评论、弹幕 |
-| `src/vision.ts` | 调 OpenAI 兼容视觉模型看图 |
+| `src/chat.ts` | 解析 `qq.forward` 聊天记录并配成对话 |
 | `src/ENV_PROMPT.md` | 环境提示词模板 |
 | `tests/` | 干装载、工具回执、配额、时机、解析函数 |
 
@@ -124,8 +119,10 @@ corepack pnpm check:extension <包目录>
 
 ## 已知限制
 
-- 群聊里的对话对由 Coo 判断后调 `netlingo_capture` 写入,不自动扫描聊天记录:世界不读别的 World
-  的事件正文,也避免把无关内容和隐私存下来。
+- 聊天记录不会自动扫描:`netlingo_import_chat` 只读事件库里 QQ World 已经展开的 `qq.forward`,
+  而且要由 bot 主动调用。它不读普通群消息正文,避免把日常聊天整段存下来。
+- 聊天记录读取依赖 QQ World 已把合并转发展开成 `qq.forward`;`source` 默认 `qqbot`,World 改了 id 要跟着改。
+- 不做 GIF/图片识别:那属于 QQ World 的 vision;本包只处理文字形式的聊天记录。
 - 评论区只覆盖 B 站:未登录时主评论只返回 3 条,但每条下面的楼中楼能读 20 条,拌嘴样本主要来自那里。
   微博、知乎、抖音的评论接口要签名或登录,不碰。
 - 贴吧被百度安全验证挡住(403),没有接入。
@@ -133,6 +130,4 @@ corepack pnpm check:extension <包目录>
   但给出的是站内跳转链接。四处都不通时在 `searchEndpoint` 填自己的端点(返回 JSON 或 HTML 都认)。
 - 抓图质量取决于输入地址与目标页的 `og:image`;回执如实写抓到几张、跳过几个。
 - 不判断群规与刷屏风险,这部分由 bot 在环境提示词里自行约束。
-- 看图要单独配一个视觉模型(端点、模型名、密钥);没配时 `netlingo_describe_meme` 会直说缺什么。
-  它只描述你自己库里的梗图,不碰 QQ 收到的图片——那属于 QQ World 的 vision。
 - `cortico` 开发依赖按 npm 上已发布的版本钉;框架升级后同步改这里。

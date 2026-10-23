@@ -5,11 +5,7 @@ import { NETLINGO_TOOL_DECLS, NetlingoWorld } from './world.ts';
 export const NETLINGO: WorldDefinition<NetlingoConfigSection> = {
   id: 'netlingo',
   label: '网络语言',
-  defaults: () => ({
-    ...NETLINGO_DEFAULTS,
-    proactive: { ...NETLINGO_DEFAULTS.proactive },
-    vision: { ...NETLINGO_DEFAULTS.vision },
-  }),
+  defaults: () => ({ ...NETLINGO_DEFAULTS, proactive: { ...NETLINGO_DEFAULTS.proactive } }),
   // `ctx.cfg` 是 `worlds.netlingo` 的活引用:热改的键现读即生效。
   create: (ctx) =>
     new NetlingoWorld({
@@ -32,7 +28,7 @@ export const NETLINGO: WorldDefinition<NetlingoConfigSection> = {
       netlingo_capture: { zh: '把群里一来一回的两句原话记进长期库。', en: 'Stores a two-line exchange from a group chat.' },
       netlingo_exchanges: { zh: '翻长期库里的对话对。', en: 'Looks up saved exchanges.' },
       netlingo_match: { zh: '拿群聊原话查库:命中对话对给下一句,命中词条说明可以再用。', en: 'Matches a chat line against the library and offers the next line or the stored term.' },
-      netlingo_describe_meme: { zh: '调视觉模型给库里的梗图生成一句话描述。', en: 'Asks a vision model for a one-line description of a stored meme.' },
+      netlingo_import_chat: { zh: '从事件库读群里的聊天记录,把一来一回存进长期库。', en: 'Reads shared chat records from the event store and keeps the exchanges.' },
       netlingo_pick: { zh: '随机取一条词条、梗图或对话对用于主动说话。', en: 'Picks one term, meme or exchange to use when speaking up.' },
       netlingo_status: { zh: '报告开关、今日用量与库存。', en: 'Reports the switch, today usage and library size.' },
       netlingo_switch: { zh: '开关网络语言能力并立即生效。', en: 'Turns the slang ability on or off, taking effect immediately.' },
