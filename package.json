@@ -1,8 +1,8 @@
 {
   "name": "cortico-world-netlingo",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "type": "module",
-  "description": "让 Coo 可以自己总结、自己上网搜索并保存梗到本地的扩展,建议搭配各大佬的 QQ 接入扩展使用。",
+  "description": "让 Coo 可以自己总结、自己上网搜索并保存梗到本地的扩展,建议搭配各大佬的 QQ 接入扩展使用;也可以当作一个互联网接口使用,查网络用语、热榜与评论区。",
   "license": "MIT",
   "author": "danhuangpai",
   "repository": {
