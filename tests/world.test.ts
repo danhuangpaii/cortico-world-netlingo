@@ -548,7 +548,8 @@ describe('Netlingo World', () => {
     lib.terms[0].aliases = ['kskbl'];
     writeFileSync(join(f.dataDir, 'netlingo-library.json'), JSON.stringify(lib), 'utf8');
     const out = String(await tool(f.world, 'netlingo_chain').handler({ term: 'kskbl' }, CALL));
-    expect(out).toContain('康神开播了');
+    expect(out).toContain('下一句直接发');
+    expect(out).toContain('zdjd');
   });
 
   it('面板 list 返回词条与计数', async () => {

@@ -1017,7 +1017,13 @@ export class NetlingoWorld implements World {
         }
         const list = chains.map((item) => `- ${item}`).join('\n');
         if (!candidate) {
-          return `「${hit.term}」常见接法:\n${list}\n${UNTRUSTED_NOTE}`;
+          const [first, ...rest] = chains;
+          return (
+            `下一句直接发:${first}\n` +
+            (rest.length ? `也能接:${rest.join(' / ')}\n` : '') +
+            '(别解释这个梗,除非对方问;也别念出这段说明。)\n' +
+            UNTRUSTED_NOTE
+          );
         }
         const wanted = normalizeChain(candidate);
         const matched = chains.find((item) => {
