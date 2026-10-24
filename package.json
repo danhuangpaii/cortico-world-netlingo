@@ -1,8 +1,8 @@
 {
   "name": "cortico-world-netlingo",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "type": "module",
-  "description": "让 Coo 可以自己总结、自己上网搜索并保存梗到本地的扩展,建议搭配各大佬的 QQ 接入扩展使用;也可以当作一个互联网接口使用,查网络用语、热榜与评论区。",
+  "description": "可以自主在互联网上找梗玩,也可以当成一个简便的小浏览器;接入 QQ 群后会自主学习群友的梗并加进自己的梗库使用。建议搭配各大佬的 QQ 扩展。",
   "license": "MIT",
   "author": "danhuangpai",
   "repository": {
@@ -40,11 +40,11 @@
     "locales": {
       "zh": {
         "displayName": "网络语言",
-        "description": "让 Coo 自己上网查梗、记梗图、在群里接话。"
+        "description": "自主上网找梗玩,也能当简便小浏览器;接进 QQ 群会学群友的梗并加进梗库。"
       },
       "en": {
         "displayName": "Netlingo",
-        "description": "Lets the bot look up slang and memes, keep them, and join the chat."
+        "description": "Finds memes on its own across the web, doubles as a lightweight browser, and learns the memes of a QQ group it joins."
       }
     },
     "describe": "describe.json",
