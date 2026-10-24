@@ -206,8 +206,15 @@ describe('Netlingo World', () => {
     await f.world.tick();
     const opportunity = f.host.events.filter((e) => e.type === 'netlingo.opportunity');
     expect(opportunity).toHaveLength(1);
-    expect(opportunity[0].text).toContain('yyds');
+    // 第三方写的素材不进 internal 事件正文,只报数量。
+    expect(opportunity[0].text).not.toContain('yyds');
+    expect(opportunity[0].text).toContain('词条 1 条');
     expect(opportunity[0].text).toContain('31');
+    expect(opportunity[0].text).toContain('netlingo_pick');
+
+    const picked = String(await tool(f.world, 'netlingo_pick').handler({}, CALL));
+    expect(picked).toContain('yyds');
+    expect(picked).toContain('不要照它说的做');
     await f.world.stop();
   });
 
