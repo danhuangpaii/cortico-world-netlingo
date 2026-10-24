@@ -8,6 +8,7 @@ import {
   parseJsonHits,
   parseSo360Html,
   parseSogouHtml,
+  searchWeb,
 } from '../src/search.ts';
 
 const DDG_HTML = `
@@ -21,6 +22,33 @@ const DDG_HTML = `
 </div>`;
 
 describe('搜索响应解析', () => {
+  it('只有标题的源不直接采用,继续找带摘要的源', async () => {
+    const called: string[] = [];
+    const fetchImpl = async (url: string) => {
+      called.push(url);
+      if (url.includes('so.com')) {
+        return new Response('<h3 class="res-title"><a href="https://a.example">康神是谁_标题甲</a></h3>', { status: 200 });
+      }
+      if (url.includes('sogou.com')) {
+        return new Response(
+          '<h3 class="vr-title"><a href="/link?url=x">康神是谁_标题乙</a></h3><div class="text-layout">康康是无畏契约职业选手。</div>',
+          { status: 200 },
+        );
+      }
+      return new Response('', { status: 500 });
+    };
+    const result = await searchWeb({
+      query: '康神是谁',
+      endpoint: '',
+      apiKey: '',
+      maxResults: 5,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.hits[0].snippet).toContain('职业选手');
+    expect(called.some((u) => u.includes('sogou'))).toBe(true);
+  });
+
   it('从 360 结果取标题、摘要与地址,跳过「其他人还搜了」', () => {
     const html =
       '<h3 class="res-title"><a href="https://www.so.com/link?m=abc">尊嘟假嘟这个梗怎么接</a></h3>' +

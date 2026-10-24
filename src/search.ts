@@ -62,6 +62,8 @@ export async function searchWeb(opts: SearchOptions): Promise<SearchResult> {
 
   let lastError = '';
   const tried: string[] = [];
+  /** 只有标题、没有摘要的一组结果:留着当兜底,但先让后面的源再试一次。 */
+  let headlineOnly: { hits: SearchHit[]; source: string } | null = null;
   for (const source of BUILTIN_SOURCES) {
     const url = source.url(opts.query);
     tried.push(url);
@@ -71,9 +73,17 @@ export async function searchWeb(opts: SearchOptions): Promise<SearchResult> {
       continue;
     }
     const hits = source.parse(page.body, opts.maxResults);
-    if (hits.length) return { ok: true, hits, source: url };
-    lastError = '没有可解析的结果';
+    if (!hits.length) {
+      lastError = '没有可解析的结果';
+      continue;
+    }
+    // 只有标题的结果对「这词什么意思」几乎没用:模型只能看着标题猜。换成有摘要的源。
+    const withSnippet = hits.filter((hit) => hit.snippet.trim().length > 0);
+    if (withSnippet.length) return { ok: true, hits, source: url };
+    headlineOnly ??= { hits, source: url };
+    lastError = '结果只有标题、没有摘要';
   }
+  if (headlineOnly) return { ok: true, hits: headlineOnly.hits, source: headlineOnly.source };
   return {
     ok: false,
     hits: [],

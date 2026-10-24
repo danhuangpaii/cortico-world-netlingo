@@ -1,6 +1,6 @@
 {
   "name": "cortico-world-netlingo",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "type": "module",
   "description": "可以自主在互联网上找梗玩,也可以当成一个简便的小浏览器;接入 QQ 群后会自主学习群友的梗并加进自己的梗库使用。建议搭配各大佬的 QQ 扩展。",
   "license": "MIT",
