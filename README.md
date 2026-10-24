@@ -43,6 +43,9 @@ B 站找播放最高的相关视频,返回「楼 + 楼中楼回复」,再附一�
 **接住群里的话。** `netlingo_match` 拿群聊原话查库:命中对话对就给出可以接的下一句,命中词条就说明
 群友用的词你记过、可以顺着再用。本地查询,不联网、不扣额度。
 
+**接梗。** `netlingo_learn` 记词条时可以带 `chains`(常见接龙)与 `aliases`(别名);`netlingo_chain` 给一个梗名查常见接法,再给候选句判断接得对不对。库里没记录的梗会直说,不编。
+World 页里有「梗库」面板,能直接翻所有词条、用法、接龙与标签,带搜索。
+
 **读群里的聊天记录。** 群友发「合并转发」时,QQ World 会展开成 `qq.forward` 事件。`netlingo_import_chat`
 从事件库读它,按不同人的相邻发言配成对话对存进长期库;默认读最近 3 条,可只读不存(`save: false`)。
 只读事件库,不联网、不扣额度。
@@ -97,6 +100,7 @@ Coopanion 的 QQ World 自己也有一套主动说话调度(`qq_proactive`)。�
 | `netlingo_capture` | 记一组对话对 |
 | `netlingo_exchanges` | 翻长期库里的对话对 |
 | `netlingo_match` | 拿群聊原话查库,给下一句或可再用的词条 |
+| `netlingo_chain` | 查常见接龙,判断接得对不对 |
 | `netlingo_import_chat` | 从事件库读聊天记录,配对入库 |
 | `netlingo_label_sticker` | 给表情包记下适合的气氛与场合 |
 | `netlingo_sticker_for` | 按当前气氛找一张该发的表情 |

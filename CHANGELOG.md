@@ -1,3 +1,9 @@
+## 0.3.5
+
+- 从 `cortico-world-meme-alont1` 收编接龙能力:词条加 `chains` 与 `aliases`,新工具 `netlingo_chain` 判断「这句接得对不对」,没记录的梗直说不编。
+- 新增「梗库」WebUI 面板:World 页里可直接查看词条、用法、接龙、标签与记下时间,带搜索。
+- 迁移了 meme 扩展的 8 个种子梗与本地 5 条,现有 19 条词条。
+
 ## 0.3.4
 
 - 降低注入面:`netlingo.opportunity` 事件不再内联库里的素材文本,只报数量与下一步;素材一律走 `netlingo_pick` 的工具回执。这去掉了「第三方文本进入 origin:'internal' 事件」这一条。

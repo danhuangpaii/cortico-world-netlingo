@@ -1,6 +1,6 @@
 {
   "name": "cortico-world-netlingo",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "type": "module",
   "description": "让 Coo 可以自己总结、自己上网搜索并保存梗到本地的扩展,建议搭配各大佬的 QQ 接入扩展使用;也可以当作一个互联网接口使用,查网络用语、热榜与评论区。",
   "license": "MIT",
@@ -47,10 +47,12 @@
         "description": "Lets the bot look up slang and memes, keep them, and join the chat."
       }
     },
-    "describe": "describe.json"
+    "describe": "describe.json",
+    "webUiClient": "dist/webui.js"
   },
   "files": [
     "src",
+    "dist",
     "README.md",
     "CHANGELOG.md",
     "LICENSE",
@@ -58,11 +60,13 @@
   ],
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.webui.json",
+    "build:webui": "node scripts/build-webui.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "cortico": "^0.2.5",
+    "esbuild": "^0.28.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"

@@ -8,6 +8,10 @@ export interface TermEntry {
   example?: string;
   sourceUrl?: string;
   tags?: string[];
+  /** 常见接龙:别人抛这个梗时，接哪句是真的。 */
+  chains?: string[];
+  /** 同一个梗的其他写法,查找时也算命中。 */
+  aliases?: string[];
   learnedAt: string;
 }
 

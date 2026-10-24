@@ -98,7 +98,7 @@ export const NETLINGO_TOOL_DECLS: ReadonlyArray<Omit<ToolDef, 'handler'>> = [
   {
     name: 'netlingo_learn',
     description:
-      '把一条网络用语记进本地库:词、它在群聊里怎么用,可带一句能直接发的例句、来源地址与标签。同名词条会被覆盖。',
+      '把一条网络用语记进本地库:词、它在群聊里怎么用,可带一句能直接发的例句、来源地址、标签与常见接龙。同名词条会被覆盖。',
     tags: ['write'],
     parameters: {
       type: 'object',
@@ -109,6 +109,11 @@ export const NETLINGO_TOOL_DECLS: ReadonlyArray<Omit<ToolDef, 'handler'>> = [
         example: { type: 'string', description: '可选,一句能直接发到群里的用法。' },
         sourceUrl: { type: 'string', description: '可选,出处地址。' },
         tags: { type: 'array', items: { type: 'string' }, description: '可选,几个标签,如「嘲讽」「夸赞」。' },
+        chains: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '可选,别人抛这个梗时能接的句子,如「zdjd（真的假的）」。netlingo_chain 用它判断接得对不对。',
+        },
       },
       required: ['term', 'meaning'],
     },
@@ -272,6 +277,21 @@ export const NETLINGO_TOOL_DECLS: ReadonlyArray<Omit<ToolDef, 'handler'>> = [
     },
   },
   {
+    name: 'netlingo_chain',
+    description:
+      '验接龙:给一个梗名,查库里记录的常见接法;再给一句候选,判断它接得对不对。库里没记录的梗会直说,不编。',
+    tags: ['read'],
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        term: { type: 'string', description: '梗名,如 kskbl 或「康神开播了」。' },
+        candidate: { type: 'string', description: '可选,想判断的那句接龙。不填就只返回常见接法。' },
+      },
+      required: ['term'],
+    },
+  },
+  {
     name: 'netlingo_pick',
     description: '取一条素材用于主动说话:随机返回一个词条或一张梗图,梗图会给可直接发送的文件名标记。',
     tags: ['read'],
@@ -371,6 +391,7 @@ export class NetlingoWorld implements World {
       this.importChatTool(),
       this.labelStickerTool(),
       this.stickerForTool(),
+      this.chainTool(),
       this.pickTool(),
       this.statusTool(),
       this.switchTool(),
@@ -381,8 +402,20 @@ export class NetlingoWorld implements World {
     return {
       label: '网络语言',
       lamps: [this.lamp(language)],
+      panels: [
+        {
+          id: 'library',
+          title: '梗库',
+          description: '查看已记下的词条、用法与接龙。',
+        },
+      ],
       config: [NETLINGO_CAPABILITY_GROUP, NETLINGO_SEARCH_GROUP, NETLINGO_STICKER_GROUP, NETLINGO_PROACTIVE_GROUP],
       storage: this.storageParts(),
+      invoke: async (panel: string, method: string) => {
+        if (panel !== 'library') throw new Error(`unknown panel: ${panel}`);
+        if (method !== 'list') throw new Error(`unknown method: ${method}`);
+        return this.panelList();
+      },
       promptDocs: [
         {
           key: 'worlds.netlingo.envPrompt',
@@ -532,6 +565,7 @@ export class NetlingoWorld implements World {
           example: textArg(args.example) || undefined,
           sourceUrl: textArg(args.sourceUrl) || undefined,
           tags: stringArray(args.tags).slice(0, 8),
+          chains: stringArray(args.chains).slice(0, 8),
           learnedAt: nowIso(this.timezone),
         };
         const { replaced } = this.library.addTerm(lib, entry);
@@ -965,6 +999,38 @@ export class NetlingoWorld implements World {
     }
   }
 
+  private chainTool(): ToolDef {
+    return {
+      ...decl('netlingo_chain'),
+      handler: async (args) => {
+        const term = textArg(args.term);
+        if (!term) return failure('term 不能为空。');
+        const candidate = textArg(args.candidate);
+        const lib = this.library.load();
+        const hit = findTerm(lib, term);
+        if (!hit) {
+          return `库里没有记过「${term}」。别编接法;要学就先用 netlingo_search 查,再用 netlingo_learn 记下常见接龙。`;
+        }
+        const chains = hit.chains ?? [];
+        if (!chains.length) {
+          return `「${hit.term}」:${hit.meaning}\n库里没记这个梗的接龙。别硬接,或者查一次补上。`;
+        }
+        const list = chains.map((item) => `- ${item}`).join('\n');
+        if (!candidate) {
+          return `「${hit.term}」常见接法:\n${list}\n${UNTRUSTED_NOTE}`;
+        }
+        const wanted = normalizeChain(candidate);
+        const matched = chains.find((item) => {
+          const known = normalizeChain(item);
+          return known === wanted || known.includes(wanted) || wanted.includes(known);
+        });
+        return matched
+          ? `接得对:「${candidate}」是「${hit.term}」的常见接法。`
+          : `「${candidate}」不在库里的接法清单里,可能是别家的梗或编的。常见接法:\n${list}`;
+      },
+    };
+  }
+
   private pickTool(): ToolDef {
     return {
       ...decl('netlingo_pick'),
@@ -1000,6 +1066,37 @@ export class NetlingoWorld implements World {
   }
 
   // ---- 内部 ----
+
+  /** 「梗库」面板的数据面:只回展示用的字符串与计数,不回文件路径。 */
+  private panelList(): {
+    counts: { terms: number; exchanges: number; stickers: number; memes: number };
+    terms: Array<{
+      term: string;
+      meaning: string;
+      example: string;
+      chains: string[];
+      tags: string[];
+      learnedAt: string;
+    }>;
+  } {
+    const lib = this.library.load();
+    return {
+      counts: {
+        terms: lib.terms.length,
+        exchanges: lib.exchanges.length,
+        stickers: lib.stickers.length,
+        memes: lib.memes.length,
+      },
+      terms: lib.terms.map((item) => ({
+        term: item.term,
+        meaning: item.meaning,
+        example: item.example ?? '',
+        chains: item.chains ?? [],
+        tags: item.tags ?? [],
+        learnedAt: item.learnedAt,
+      })),
+    };
+  }
 
   /** World 页「数据」页签:库的位置、规模与清除入口。 */
   private storageParts(): StoragePart[] {
@@ -1265,6 +1362,26 @@ function describeExchange(row: ExchangeEntry): string {
   const head = `【对话对·${row.where}${row.topic ? `·${row.topic}` : ''}】`;
   const note = row.note ? `\n   备注:${row.note}` : '';
   return `${head}\n   甲:${row.a}\n   乙:${row.b}${note}`;
+}
+
+function normalizeChain(value: string): string {
+  return value.toLowerCase().replace(/[\s\p{P}\p{S}]/gu, '');
+}
+
+/** 按名字或别名找词条;精确命中优先,找不到再按包含关系找。 */
+function findTerm(lib: LibraryFile, query: string): TermEntry | undefined {
+  const q = normalizeChain(query);
+  if (!q) return undefined;
+  const exact = lib.terms.find(
+    (item) =>
+      normalizeChain(item.term) === q ||
+      (item.aliases ?? []).some((alias) => normalizeChain(alias) === q),
+  );
+  if (exact) return exact;
+  return lib.terms.find((item) => {
+    const term = normalizeChain(item.term);
+    return term.includes(q) || q.includes(term);
+  });
 }
 
 function textArg(value: unknown): string {

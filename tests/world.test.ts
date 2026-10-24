@@ -510,6 +510,64 @@ describe('Netlingo World', () => {
     expect(out).toContain('现有 2 张');
   });
 
+  it('记下接龙后能判断接得对不对', async () => {
+    const f = makeWorld();
+    await tool(f.world, 'netlingo_learn').handler(
+      { term: '康神开播了', meaning: '电竞梗', chains: ['zdjd（真的假的）', 'wkzkbl'] },
+      CALL,
+    );
+    const list = String(await tool(f.world, 'netlingo_chain').handler({ term: '康神开播了' }, CALL));
+    expect(list).toContain('zdjd');
+
+    const good = String(
+      await tool(f.world, 'netlingo_chain').handler({ term: '康神开播了', candidate: 'zdjd' }, CALL),
+    );
+    expect(good).toContain('接得对');
+
+    const bad = String(
+      await tool(f.world, 'netlingo_chain').handler({ term: '康神开播了', candidate: '随便接一句' }, CALL),
+    );
+    expect(bad).toContain('不在库里');
+  });
+
+  it('查没记过的梗时直说,不编', async () => {
+    const f = makeWorld();
+    const out = String(await tool(f.world, 'netlingo_chain').handler({ term: '不存在的梗' }, CALL));
+    expect(out).toContain('没有记过');
+  });
+
+  it('别名也能查到接龙', async () => {
+    const f = makeWorld();
+    await tool(f.world, 'netlingo_learn').handler(
+      { term: '康神开播了', meaning: '电竞梗', chains: ['zdjd'] },
+      CALL,
+    );
+    const copy = f.world['library'];
+    void copy;
+    const lib = JSON.parse(readFileSync(join(f.dataDir, 'netlingo-library.json'), 'utf8'));
+    lib.terms[0].aliases = ['kskbl'];
+    writeFileSync(join(f.dataDir, 'netlingo-library.json'), JSON.stringify(lib), 'utf8');
+    const out = String(await tool(f.world, 'netlingo_chain').handler({ term: 'kskbl' }, CALL));
+    expect(out).toContain('康神开播了');
+  });
+
+  it('面板 list 返回词条与计数', async () => {
+    const f = makeWorld();
+    await tool(f.world, 'netlingo_learn').handler(
+      { term: 'yyds', meaning: '永远的神', chains: ['YYDS'] },
+      CALL,
+    );
+    const invoke = f.world.webUi().invoke;
+    expect(invoke).toBeTruthy();
+    const payload = (await invoke!('library', 'list', [])) as {
+      counts: { terms: number };
+      terms: Array<{ term: string; chains: string[] }>;
+    };
+    expect(payload.counts.terms).toBe(1);
+    expect(payload.terms[0].term).toBe('yyds');
+    expect(payload.terms[0].chains).toEqual(['YYDS']);
+  });
+
   it('状态回执写清开关、用量与库存', async () => {
     const f = makeWorld();
     await tool(f.world, 'netlingo_learn').handler({ term: 'yyds', meaning: '永远的神' }, CALL);
