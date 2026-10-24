@@ -48,6 +48,29 @@ const BUILTIN_SOURCES = [
 ];
 const TIMEOUT_MS = 12_000;
 
+/** 命中过的查询短期复用:同一句话反复查不该反复打各家搜索页。 */
+const CACHE_MS = 5 * 60_000;
+const CACHE_LIMIT = 50;
+const cache = new Map<string, { at: number; result: SearchResult }>();
+
+function cacheKey(query: string): string {
+  return query.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function remember(key: string, result: SearchResult): void {
+  cache.set(key, { at: Date.now(), result });
+  while (cache.size > CACHE_LIMIT) {
+    const oldest = cache.keys().next().value;
+    if (oldest === undefined) break;
+    cache.delete(oldest);
+  }
+}
+
+/** 测试用:清掉缓存。 */
+export function clearSearchCache(): void {
+  cache.clear();
+}
+
 export async function searchWeb(opts: SearchOptions): Promise<SearchResult> {
   const endpoint = opts.endpoint.trim();
   if (endpoint) {
@@ -60,30 +83,51 @@ export async function searchWeb(opts: SearchOptions): Promise<SearchResult> {
     return { ok: true, hits, source: url };
   }
 
+  const key = cacheKey(opts.query);
+  const cached = cache.get(key);
+  if (cached && Date.now() - cached.at < CACHE_MS) return cached.result;
+
   let lastError = '';
   const tried: string[] = [];
   /** 只有标题、没有摘要的一组结果:留着当兜底,但先让后面的源再试一次。 */
   let headlineOnly: { hits: SearchHit[]; source: string } | null = null;
-  for (const source of BUILTIN_SOURCES) {
-    const url = source.url(opts.query);
-    tried.push(url);
-    const page = await fetchPage(url, opts);
-    if (!page.ok) {
-      lastError = page.error;
-      continue;
+
+  // 两两并行:一次等两个源,而不是一个接一个等超时。
+  const groups = [BUILTIN_SOURCES.slice(0, 2), BUILTIN_SOURCES.slice(2)];
+  for (const group of groups) {
+    const settled = await Promise.allSettled(
+      group.map(async (source) => {
+        const url = source.url(opts.query);
+        tried.push(url);
+        const page = await fetchPage(url, opts);
+        if (!page.ok) throw new Error(page.error);
+        const hits = source.parse(page.body, opts.maxResults);
+        if (!hits.length) throw new Error('没有可解析的结果');
+        return { hits, source: url };
+      }),
+    );
+    for (const item of settled) {
+      if (item.status === 'rejected') {
+        lastError = item.reason instanceof Error ? item.reason.message : String(item.reason);
+        continue;
+      }
+      const { hits, source } = item.value;
+      // 只有标题的结果对「这词什么意思」几乎没用:模型只能看着标题猜。换成有摘要的源。
+      if (hits.some((hit) => hit.snippet.trim().length > 0)) {
+        const result: SearchResult = { ok: true, hits, source };
+        remember(key, result);
+        return result;
+      }
+      headlineOnly ??= { hits, source };
+      lastError = '结果只有标题、没有摘要';
     }
-    const hits = source.parse(page.body, opts.maxResults);
-    if (!hits.length) {
-      lastError = '没有可解析的结果';
-      continue;
-    }
-    // 只有标题的结果对「这词什么意思」几乎没用:模型只能看着标题猜。换成有摘要的源。
-    const withSnippet = hits.filter((hit) => hit.snippet.trim().length > 0);
-    if (withSnippet.length) return { ok: true, hits, source: url };
-    headlineOnly ??= { hits, source: url };
-    lastError = '结果只有标题、没有摘要';
   }
-  if (headlineOnly) return { ok: true, hits: headlineOnly.hits, source: headlineOnly.source };
+
+  if (headlineOnly) {
+    const result: SearchResult = { ok: true, hits: headlineOnly.hits, source: headlineOnly.source };
+    remember(key, result);
+    return result;
+  }
   return {
     ok: false,
     hits: [],

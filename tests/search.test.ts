@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
+  clearSearchCache,
   findPageImage,
   parseBingHtml,
   parseBingRss,
@@ -10,6 +11,8 @@ import {
   parseSogouHtml,
   searchWeb,
 } from '../src/search.ts';
+
+beforeEach(() => clearSearchCache());
 
 const DDG_HTML = `
 <div class="result results_links">
@@ -22,6 +25,49 @@ const DDG_HTML = `
 </div>`;
 
 describe('搜索响应解析', () => {
+  it('同一组里一个源失败,另一个照样用', async () => {
+    const fetchImpl = async (url: string) => {
+      if (url.includes('so.com')) throw new Error('boom');
+      if (url.includes('sogou.com')) {
+        return new Response(
+          '<h3 class="vr-title"><a href="/link?url=x">标题甲好长好长</a></h3><div class="text-layout">摘要甲在这里</div>',
+          { status: 200 },
+        );
+      }
+      return new Response('', { status: 500 });
+    };
+    const result = await searchWeb({
+      query: '并行测试',
+      endpoint: '',
+      apiKey: '',
+      maxResults: 5,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.hits[0].snippet).toContain('摘要甲');
+  });
+
+  it('同一查询第二次直接命中缓存,不再打网络', async () => {
+    let calls = 0;
+    const fetchImpl = async () => {
+      calls += 1;
+      return new Response(
+        '<h3 class="res-title"><a href="https://a.example">标题甲好长好长</a></h3><p class="res-desc">摘要甲在这里</p>',
+        { status: 200 },
+      );
+    };
+    const options = {
+      query: '缓存测试',
+      endpoint: '',
+      apiKey: '',
+      maxResults: 5,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    };
+    await searchWeb(options);
+    const afterFirst = calls;
+    await searchWeb(options);
+    expect(calls).toBe(afterFirst);
+  });
   it('只有标题的源不直接采用,继续找带摘要的源', async () => {
     const called: string[] = [];
     const fetchImpl = async (url: string) => {
